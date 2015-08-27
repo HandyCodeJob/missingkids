@@ -6,6 +6,7 @@ import re
 
 TITLE_RE = r'(?P<type>\w*): ?(?P<name>.*) \((?P<state>\w\w)\)'
 DESCRIPTION_RE = r'CONTACT: ?(?P<contact>.*) (?P<phone>\d?-?\d{3}-\d{3}-\d{4}).?'
+ID_RE = r'caseNum=(?P<id>\d+)'
 KID_FEED_URL = "http://www.missingkids.com/missingkids/servlet/XmlServlet?act=rss"
 STATES = { # http://code.activestate.com/recipes/577305/
         'AK': 'Alaska',
@@ -87,12 +88,14 @@ class MissingKid(object):
 
     def __init__(self, data):
         self.data = data
+        self.href = None
         self.parse()
 
     def parse(self):
         self.parse_title()
         self.parse_time()
         self.parse_links()
+        self.parse_id()
         self.parse_description()
 
     def parse_title(self):
@@ -120,6 +123,10 @@ class MissingKid(object):
         link = self.data['links']
         self.href = link[0]['href'] # webpage
         self.image = link[1]['href'] # image uri
+
+    def parse_id(self):
+        self.id_raw = re.search(ID_RE, self.href) # pull case num from url
+        self.id = int(self.id_raw.group('id'))
 
     def parse_description(self):
         """
@@ -170,11 +177,32 @@ class KidsFeed(object):
     def __init__(self, url):
         self.url = url
         self.feed = feedparser.parse(self.url)
-        self.missing_kids = self.kids()
-
-    def kids(self):
         self.kids_list = self.feed['items']
         self._missing_kids = []
+        self._missing_kids_ids = []
+
+    @property
+    def missing_kids_ids(self):
+        if not self._missing_kids_ids:
+            self._missing_kids_ids = self.kids_ids()
+        return self._missing_kids_ids
+
+    @property
+    def missing_kids(self):
+        if not self._missing_kids:
+            self._missing_kids = self.kids()
+        return self._missing_kids
+
+    def kids_ids(self):
+        for kid_data in self.kids_list:
+            href = kid_data['links'][0]['href']
+            id_raw = re.search(ID_RE, href) # pull case num from url
+            id = int(id_raw.group('id'))
+            self._missing_kids_ids.append(id)
+        return self._missing_kids_ids
+
+
+    def kids(self):
         for kid_data in self.kids_list:
             missing_kid = MissingKid(kid_data)
             self._missing_kids.append(missing_kid)
@@ -183,5 +211,5 @@ class KidsFeed(object):
 
 if __name__ == "__main__":
     kid_feed = KidsFeed(KID_FEED_URL)
-    for kid in kid_feed.missing_kids:
-        print(kid)
+    for id in kid_feed.missing_kids_ids:
+        print(id)
